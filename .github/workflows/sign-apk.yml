@@ -1,0 +1,32 @@
+name: Sign Android APK
+
+on:
+  workflow_run:
+    workflows: ["Build Android APK"]
+    types: [completed]
+
+jobs:
+  sign:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MT5Dashboard-release
+          path: release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Sign release APK
+        run: |
+          APK=$(find release -name '*.apk' | head -1)
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          keytool -genkeypair -v -keystore release.jks -alias mt5dashboard -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=MT5Dashboard, OU=Android, O=MT5Dashboard, L=Unknown, S=Unknown, C=US"
+          "$BUILD_TOOLS"/zipalign -f 4 "$APK" aligned.apk
+          "$BUILD_TOOLS"/apksigner sign --ks release.jks --ks-pass pass:android --key-pass pass:android --out MT5Dashboard.apk aligned.apk
+          "$BUILD_TOOLS"/apksigner verify --verbose MT5Dashboard.apk
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT5Dashboard-installable
+          path: MT5Dashboard.apk
